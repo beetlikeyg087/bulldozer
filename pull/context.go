@@ -25,6 +25,10 @@ import (
 // A new Context should be created each time a Pull Request is being evaluated
 // such that implementations are not required to consider cache invalidation.
 type Context interface {
+
+	// Creator returns the pull request creator.
+	Creator() string
+
 	// Owner returns the pull request repository owner.
 	Owner() string
 
