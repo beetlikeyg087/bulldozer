@@ -30,6 +30,7 @@ type Signals struct {
 	Comments          []string `yaml:"comments"`
 	PRBodySubstrings  []string `yaml:"pr_body_substrings"`
 	Branches          []string `yaml:"branches"`
+	PROwners          []string `yaml:"owners"`
 }
 
 func (s *Signals) Enabled() bool {
@@ -39,6 +40,7 @@ func (s *Signals) Enabled() bool {
 	size += len(s.Comments)
 	size += len(s.PRBodySubstrings)
 	size += len(s.Branches)
+	size += len(s.PROwners)
 	return size > 0
 }
 
@@ -115,6 +117,16 @@ func (s *Signals) Matches(ctx context.Context, pullCtx pull.Context, tag string)
 	for _, signalBranch := range s.Branches {
 		if targetBranch == signalBranch {
 			return true, fmt.Sprintf("pull request target is a %s branch: %q", tag, signalBranch), nil
+		}
+	}
+
+	owner := pullCtx.Owner()
+	if len(s.PROwners) == 0 {
+		logger.Debug().Msgf("No PR owners found to match against")
+	}
+	for _, signalPRRequester := range s.PROwners {
+		if owner == signalPRRequester {
+			return true, fmt.Sprintf("pull request matches an owner %s", owner), nil
 		}
 	}
 
