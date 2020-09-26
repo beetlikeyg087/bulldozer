@@ -130,7 +130,7 @@ func (s *Signals) Matches(ctx context.Context, pullCtx pull.Context, tag string)
 
 	creator := pullCtx.Creator()
 	if len(s.PRCreator) == 0 {
-		logger.Debug().Msgf("No PR creater found to match against")
+		logger.Debug().Msgf("No PR creator found to match against")
 	}
 	for _, signalPRCreator := range s.PRCreator {
 		if creator == signalPRCreator {
