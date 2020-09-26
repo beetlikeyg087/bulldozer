@@ -134,7 +134,7 @@ func (s *Signals) Matches(ctx context.Context, pullCtx pull.Context, tag string)
 	}
 	for _, signalPRCreator := range s.PRCreator {
 		if creator == signalPRCreator {
-			return true, fmt.Sprintf("pull request matches a creator %s", owner), nil
+			return true, fmt.Sprintf("pull request matches a creator %s", creator), nil
 		}
 	}
 
