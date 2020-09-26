@@ -32,7 +32,7 @@ type Signals struct {
 	PRBodySubstrings  []string `yaml:"pr_body_substrings"`
 	Branches          []string `yaml:"branches"`
 	BranchPatterns    []string `yaml:"branch_patterns"`
-	PRCreater         []string `yaml:"creaters"`
+	PRCreator         []string `yaml:"creators"`
 }
 
 func (s *Signals) Enabled() bool {
@@ -43,7 +43,7 @@ func (s *Signals) Enabled() bool {
 	size += len(s.PRBodySubstrings)
 	size += len(s.Branches)
 	size += len(s.BranchPatterns)
-	size += len(s.PRCreater)
+	size += len(s.PRCreator)
 	return size > 0
 }
 
@@ -129,11 +129,11 @@ func (s *Signals) Matches(ctx context.Context, pullCtx pull.Context, tag string)
 	}
 
 	creator := pullCtx.Creator()
-	if len(s.PRCreater) == 0 {
+	if len(s.PRCreator) == 0 {
 		logger.Debug().Msgf("No PR creater found to match against")
 	}
-	for _, signalPRCreater := range s.PRCreater {
-		if creator == signalPRCreater {
+	for _, signalPRCreator := range s.PRCreator {
+		if creator == signalPRCreator {
 			return true, fmt.Sprintf("pull request matches a creator %s", owner), nil
 		}
 	}
