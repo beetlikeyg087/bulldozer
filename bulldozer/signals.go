@@ -17,6 +17,7 @@ package bulldozer
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -30,7 +31,8 @@ type Signals struct {
 	Comments          []string `yaml:"comments"`
 	PRBodySubstrings  []string `yaml:"pr_body_substrings"`
 	Branches          []string `yaml:"branches"`
-	PROwners          []string `yaml:"owners"`
+	BranchPatterns    []string `yaml:"branch_patterns"`
+	PRCreater         []string `yaml:"creaters"`
 }
 
 func (s *Signals) Enabled() bool {
@@ -40,7 +42,8 @@ func (s *Signals) Enabled() bool {
 	size += len(s.Comments)
 	size += len(s.PRBodySubstrings)
 	size += len(s.Branches)
-	size += len(s.PROwners)
+	size += len(s.BranchPatterns)
+	size += len(s.PRCreater)
 	return size > 0
 }
 
@@ -111,22 +114,27 @@ func (s *Signals) Matches(ctx context.Context, pullCtx pull.Context, tag string)
 	}
 
 	targetBranch, _ := pullCtx.Branches()
-	if len(s.Branches) == 0 {
-		logger.Debug().Msgf("No branches found to match against")
+	if len(s.Branches) == 0 || len(s.BranchPatterns) == 0 {
+		logger.Debug().Msgf("No branches or branch patterns found to match against")
 	}
 	for _, signalBranch := range s.Branches {
 		if targetBranch == signalBranch {
 			return true, fmt.Sprintf("pull request target is a %s branch: %q", tag, signalBranch), nil
 		}
 	}
-
-	owner := pullCtx.Owner()
-	if len(s.PROwners) == 0 {
-		logger.Debug().Msgf("No PR owners found to match against")
+	for _, signalBranch := range s.BranchPatterns {
+		if matched, _ := regexp.MatchString(fmt.Sprintf("^%s$", signalBranch), targetBranch); matched {
+			return true, fmt.Sprintf("pull request target branch (%q) matches pattern: %q", targetBranch, signalBranch), nil
+		}
 	}
-	for _, signalPRRequester := range s.PROwners {
-		if owner == signalPRRequester {
-			return true, fmt.Sprintf("pull request matches an owner %s", owner), nil
+
+	creator := pullCtx.Creator()
+	if len(s.PRCreater) == 0 {
+		logger.Debug().Msgf("No PR creater found to match against")
+	}
+	for _, signalPRCreater := range s.PRCreater {
+		if creator == signalPRCreater {
+			return true, fmt.Sprintf("pull request matches a creator %s", owner), nil
 		}
 	}
 

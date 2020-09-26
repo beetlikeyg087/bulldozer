@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/google/go-github/v31/github"
+	"github.com/google/go-github/v32/github"
 	"github.com/pkg/errors"
 )
 
@@ -61,6 +61,10 @@ func (ghc *GithubContext) Repo() string {
 
 func (ghc *GithubContext) Number() int {
 	return ghc.number
+}
+
+func (ghc *GithubContext) Creator() string {
+	return ghc.pr.GetUser().GetLogin()
 }
 
 func (ghc *GithubContext) Locator() string {
