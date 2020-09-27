@@ -79,22 +79,22 @@ func (s *Signals) Matches(ctx context.Context, pullCtx pull.Context, tag string)
 func (s *Signals) matchesForOne(ctx context.Context, pullCtx pull.Context, tag string, logger *zerolog.Logger) (bool, string, error) {
 
 	if match, reason, err := s.doesLabelSignalMatch(ctx, pullCtx, tag, logger); err != nil || match {
-		return match, reason, err
+		return true, reason, err
 	}
 	if match, reason, err := s.doesCommentSingalMatch(ctx, pullCtx, tag, logger); err != nil || match {
-		return match, reason, err
+		return true, reason, err
 	}
 	if match, reason, err := s.doesCommentSubstringSingalMatch(ctx, pullCtx, tag, logger); err != nil || match {
-		return match, reason, err
+		return true, reason, err
 	}
 	if match, reason, err := s.doesPRSubstringSingalMatch(ctx, pullCtx, tag, logger); err != nil || match {
-		return match, reason, err
+		return true, reason, err
 	}
 	if match, reason, err := s.doesTargetBranchSingalMatch(ctx, pullCtx, tag, logger); err != nil || match {
-		return match, reason, err
+		return true, reason, err
 	}
 	if match, reason, err := s.doesCreatorSingalMatch(ctx, pullCtx, tag, logger); err != nil || match {
-		return match, reason, err
+		return true, reason, err
 	}
 
 	return false, fmt.Sprintf("pull request does not match the %s", tag), nil
@@ -124,33 +124,6 @@ func (s *Signals) matchesForAll(ctx context.Context, pullCtx pull.Context, tag s
 	return true, fmt.Sprintf("pull request matches the %s", tag), nil
 }
 
-func containsOne(requires []string, comparators []string) (bool, string, error) {
-	for _, r := range requires {
-		for _, c := range comparators {
-			if strings.EqualFold(r, c) {
-				return true, "test", nil
-			}
-		}
-	}
-	return false, "test", nil
-}
-
-func containsAll(requires []string, comparators []string) (bool, string, error) {
-	var match bool
-	for _, r := range requires {
-		match = false
-		for _, c := range comparators {
-			if strings.EqualFold(r, c) {
-				match = true
-				break
-			}
-		}
-		if !match {
-			return false, "test", nil
-		}
-	}
-	return true, "test", nil
-}
 
 func (s *Signals) doesLabelSignalMatch(ctx context.Context, pullCtx pull.Context, tag string, logger *zerolog.Logger) (bool, string, error) {
 	labels, err := pullCtx.Labels(ctx)
@@ -158,15 +131,37 @@ func (s *Signals) doesLabelSignalMatch(ctx context.Context, pullCtx pull.Context
 		return false, "unable to list pull request labels", err
 	}
 
-	if len(labels) == 0 {
-		logger.Debug().Msgf("No labels found to match against")
+	if len(s.Label.Values) == 0 {
+		logger.Debug().Msgf("Singal [label] is not found. Skipping...")
 		return false, SIGNAL_NOT_FOUND, nil
 	}
 
 	if s.Label.Match == MATCH_ALL {
-		return containsAll(s.Label.Values, labels)
+		var match bool
+		for _, r := range s.Label.Values {
+			match = false
+			for _, c := range labels {
+				if strings.EqualFold(r, c) {
+					match = true
+					break
+				}
+			}
+			if !match {
+				return false, SIGNAL_NOT_MATCH, nil
+			}
+		}
+		return true, "pull request has all labels", nil
 	}
-	return containsOne(s.Label.Values, labels)
+	else{
+		for _, r := range s.Label.Values {
+			for _, c := range labels {
+				if strings.EqualFold(r, c) {
+					return true, fmt.Sprintf("pull request matches the label %s", c), nil
+				}
+			}
+		}
+		return false, "pull request has no labels match", nil
+	}
 }
 
 func (s *Signals) doesCommentSingalMatch(ctx context.Context, pullCtx pull.Context, tag string, logger *zerolog.Logger) (bool, string, error) {
@@ -176,9 +171,14 @@ func (s *Signals) doesCommentSingalMatch(ctx context.Context, pullCtx pull.Conte
 		return false, "unable to list pull request comments", err
 	}
 
+	if len(s.Comments) == 0 {
+		logger.Debug().Msgf("Singal [comments] is not found. Skipping...")
+		return false, SIGNAL_NOT_FOUND, nil
+	}
+
 	if len(comments) == 0 {
 		logger.Debug().Msgf("No comments found to match against")
-		return false, SIGNAL_NOT_FOUND, nil
+		return false, SIGNAL_NOT_MATCH, nil
 	}
 
 	for _, signalComment := range s.Comments {
@@ -202,7 +202,7 @@ func (s *Signals) doesCommentSubstringSingalMatch(ctx context.Context, pullCtx p
 	}
 
 	if len(s.CommentSubstrings) == 0 {
-		logger.Debug().Msgf("No comment substrings found to match against")
+		logger.Debug().Msgf("Singal [comment_substrings] is not found. Skipping...")
 		return false, SIGNAL_NOT_FOUND, nil
 	}
 	for _, signalSubstring := range s.CommentSubstrings {
@@ -221,7 +221,7 @@ func (s *Signals) doesCommentSubstringSingalMatch(ctx context.Context, pullCtx p
 func (s *Signals) doesPRSubstringSingalMatch(ctx context.Context, pullCtx pull.Context, tag string, logger *zerolog.Logger) (bool, string, error) {
 	body := pullCtx.Body()
 	if len(s.PRBodySubstrings) == 0 {
-		logger.Debug().Msgf("No PR body substrings found to match against")
+		logger.Debug().Msgf("Singal [pr_body_substrings] is not found. Skipping...")
 		return false, SIGNAL_NOT_FOUND, nil
 	}
 	for _, signalSubstring := range s.PRBodySubstrings {
@@ -234,8 +234,8 @@ func (s *Signals) doesPRSubstringSingalMatch(ctx context.Context, pullCtx pull.C
 
 func (s *Signals) doesTargetBranchSingalMatch(ctx context.Context, pullCtx pull.Context, tag string, logger *zerolog.Logger) (bool, string, error) {
 	targetBranch, _ := pullCtx.Branches()
-	if len(s.Branches) == 0 || len(s.BranchPatterns) == 0 {
-		logger.Debug().Msgf("No branches or branch patterns found to match against")
+	if len(s.Branches) == 0 && len(s.BranchPatterns) == 0 {
+		logger.Debug().Msgf("Singal [branches] or [branch_patterns] is not found. Skipping...")
 		return false, SIGNAL_NOT_FOUND, nil
 	}
 	for _, signalBranch := range s.Branches {
@@ -254,7 +254,7 @@ func (s *Signals) doesTargetBranchSingalMatch(ctx context.Context, pullCtx pull.
 func (s *Signals) doesCreatorSingalMatch(ctx context.Context, pullCtx pull.Context, tag string, logger *zerolog.Logger) (bool, string, error) {
 	creator := pullCtx.Creator()
 	if len(s.PRCreator) == 0 {
-		logger.Debug().Msgf("No PR creator found to match against")
+		logger.Debug().Msgf("Singal [creators] is not found. Skipping...")
 		return false, SIGNAL_NOT_FOUND, nil
 	}
 	for _, signalPRCreator := range s.PRCreator {
