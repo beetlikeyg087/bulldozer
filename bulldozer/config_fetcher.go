@@ -182,12 +182,12 @@ func (cf *ConfigFetcher) unmarshalConfigV0(bytes []byte) (*Config, error) {
 			Version: 1,
 			Update: UpdateConfig{
 				Trigger: Signals{
-					Labels: []string{"update me", "update-me", "update_me"},
+					Label: SubSignal{Values: []string{"update me", "update-me", "update_me"}},
 				},
 			},
 			Merge: MergeConfig{
 				Trigger: Signals{
-					Labels: []string{"merge when ready", "merge-when-ready", "merge_when_ready"},
+					Label: SubSignal{Values: []string{"merge when ready", "merge-when-ready", "merge_when_ready"}},
 				},
 				DeleteAfterMerge: configv0.DeleteAfterMerge,
 				Method:           configv0.Strategy,
@@ -203,12 +203,12 @@ func (cf *ConfigFetcher) unmarshalConfigV0(bytes []byte) (*Config, error) {
 			Version: 1,
 			Update: UpdateConfig{
 				Trigger: Signals{
-					Labels: []string{"update me", "update-me", "update_me"},
+					Label: SubSignal{Values: []string{"update me", "update-me", "update_me"}},
 				},
 			},
 			Merge: MergeConfig{
 				Ignore: Signals{
-					Labels: []string{"wip", "do not merge", "do-not-merge", "do_not_merge"},
+					Label: SubSignal{Values: []string{"wip", "do not merge", "do-not-merge", "do_not_merge"}},
 				},
 				DeleteAfterMerge: configv0.DeleteAfterMerge,
 				Method:           configv0.Strategy,
@@ -224,7 +224,7 @@ func (cf *ConfigFetcher) unmarshalConfigV0(bytes []byte) (*Config, error) {
 			Version: 1,
 			Update: UpdateConfig{
 				Trigger: Signals{
-					Labels: []string{"update me", "update-me", "update_me"},
+					Label: SubSignal{Values: []string{"update me", "update-me", "update_me"}},
 				},
 			},
 			Merge: MergeConfig{

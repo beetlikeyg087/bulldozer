@@ -26,22 +26,39 @@ import (
 )
 
 type Signals struct {
-	Labels            []string `yaml:"labels"`
-	CommentSubstrings []string `yaml:"comment_substrings"`
-	Comments          []string `yaml:"comments"`
-	PRBodySubstrings  []string `yaml:"pr_body_substrings"`
-	Branches          []string `yaml:"branches"`
-	BranchPatterns    []string `yaml:"branch_patterns"`
+	Label             SubSignal `yaml:"label"`
+	CommentSubstrings []string  `yaml:"comment_substrings"`
+	Comments          []string  `yaml:"comments"`
+	PRBodySubstrings  []string  `yaml:"pr_body_substrings"`
+	Branches          []string  `yaml:"branches"`
+	BranchPatterns    []string  `yaml:"branch_patterns"`
+	PRCreator         []string  `yaml:"creators"`
+	Match             match     `yaml:"match"	default:"one"`
 }
+
+type SubSignal struct {
+	Match  match    `yaml:"match"	default:"one"`
+	Values []string `yaml:"values"`
+}
+
+type match string
+
+const (
+	matchOne       match  = "one"
+	matchAll       match  = "all"
+	signalNotFound string = "Signal not found"
+	signalNotMatch string = "Signal not match"
+)
 
 func (s *Signals) Enabled() bool {
 	size := 0
-	size += len(s.Labels)
+	size += len(s.Label.Values)
 	size += len(s.CommentSubstrings)
 	size += len(s.Comments)
 	size += len(s.PRBodySubstrings)
 	size += len(s.Branches)
 	size += len(s.BranchPatterns)
+	size += len(s.PRCreator)
 	return size > 0
 }
 
@@ -52,31 +69,118 @@ func (s *Signals) Enabled() bool {
 func (s *Signals) Matches(ctx context.Context, pullCtx pull.Context, tag string) (bool, string, error) {
 	logger := zerolog.Ctx(ctx)
 
+	if s.Match == matchAll {
+		return s.matchesForAll(ctx, pullCtx, tag, logger)
+	}
+
+	return s.matchesForOne(ctx, pullCtx, tag, logger)
+}
+
+func (s *Signals) matchesForOne(ctx context.Context, pullCtx pull.Context, tag string, logger *zerolog.Logger) (bool, string, error) {
+
+	if match, reason, err := s.doesLabelSignalMatch(ctx, pullCtx, tag, logger); err != nil || match {
+		return true, reason, err
+	}
+	if match, reason, err := s.doesCommentSingalMatch(ctx, pullCtx, tag, logger); err != nil || match {
+		return true, reason, err
+	}
+	if match, reason, err := s.doesCommentSubstringSingalMatch(ctx, pullCtx, tag, logger); err != nil || match {
+		return true, reason, err
+	}
+	if match, reason, err := s.doesPRSubstringSingalMatch(ctx, pullCtx, tag, logger); err != nil || match {
+		return true, reason, err
+	}
+	if match, reason, err := s.doesTargetBranchSingalMatch(ctx, pullCtx, tag, logger); err != nil || match {
+		return true, reason, err
+	}
+	if match, reason, err := s.doesCreatorSingalMatch(ctx, pullCtx, tag, logger); err != nil || match {
+		return true, reason, err
+	}
+
+	return false, fmt.Sprintf("pull request does not match the %s", tag), nil
+}
+
+func (s *Signals) matchesForAll(ctx context.Context, pullCtx pull.Context, tag string, logger *zerolog.Logger) (bool, string, error) {
+
+	if match, reason, err := s.doesLabelSignalMatch(ctx, pullCtx, tag, logger); err != nil || (!match && reason != signalNotFound) {
+		return false, reason, err
+	}
+	if match, reason, err := s.doesCommentSingalMatch(ctx, pullCtx, tag, logger); err != nil || (!match && reason != signalNotFound) {
+		return false, reason, err
+	}
+	if match, reason, err := s.doesCommentSubstringSingalMatch(ctx, pullCtx, tag, logger); err != nil || (!match && reason != signalNotFound) {
+		return false, reason, err
+	}
+	if match, reason, err := s.doesPRSubstringSingalMatch(ctx, pullCtx, tag, logger); err != nil || (!match && reason != signalNotFound) {
+		return false, reason, err
+	}
+	if match, reason, err := s.doesTargetBranchSingalMatch(ctx, pullCtx, tag, logger); err != nil || (!match && reason != signalNotFound) {
+		return false, reason, err
+	}
+	if match, reason, err := s.doesCreatorSingalMatch(ctx, pullCtx, tag, logger); err != nil || (!match && reason != signalNotFound) {
+		return false, reason, err
+	}
+
+	return true, fmt.Sprintf("pull request matches the %s", tag), nil
+}
+
+func (s *Signals) doesLabelSignalMatch(ctx context.Context, pullCtx pull.Context, tag string, logger *zerolog.Logger) (bool, string, error) {
 	labels, err := pullCtx.Labels(ctx)
 	if err != nil {
 		return false, "unable to list pull request labels", err
 	}
 
-	if len(labels) == 0 {
-		logger.Debug().Msgf("No labels found to match against")
+	if len(s.Label.Values) == 0 {
+		logger.Debug().Msgf("Singal [label] is not found. Skipping...")
+		return false, signalNotFound, nil
 	}
-	for _, signalLabel := range s.Labels {
-		for _, label := range labels {
-			if strings.EqualFold(signalLabel, label) {
-				return true, fmt.Sprintf("pull request has a %s label: %q", tag, signalLabel), nil
+
+	// evaluate by match all
+	if s.Label.Match == matchAll {
+		var match bool
+		for _, r := range s.Label.Values {
+			match = false
+			for _, c := range labels {
+				if strings.EqualFold(r, c) {
+					match = true
+					break
+				}
+			}
+			if !match {
+				return false, signalNotMatch, nil
+			}
+		}
+		return true, "pull request has all labels", nil
+	}
+	// evaluate by match one
+	for _, r := range s.Label.Values {
+		for _, c := range labels {
+			if strings.EqualFold(r, c) {
+				return true, fmt.Sprintf("pull request matches the label %s", c), nil
 			}
 		}
 	}
+	return false, "pull request has no labels match", nil
 
+}
+
+func (s *Signals) doesCommentSingalMatch(ctx context.Context, pullCtx pull.Context, tag string, logger *zerolog.Logger) (bool, string, error) {
 	body := pullCtx.Body()
 	comments, err := pullCtx.Comments(ctx)
 	if err != nil {
 		return false, "unable to list pull request comments", err
 	}
 
+	if len(s.Comments) == 0 {
+		logger.Debug().Msgf("Singal [comments] is not found. Skipping...")
+		return false, signalNotFound, nil
+	}
+
 	if len(comments) == 0 {
 		logger.Debug().Msgf("No comments found to match against")
+		return false, signalNotMatch, nil
 	}
+
 	for _, signalComment := range s.Comments {
 		if body == signalComment {
 			return true, fmt.Sprintf("pull request body is a %s comment: %q", tag, signalComment), nil
@@ -87,9 +191,19 @@ func (s *Signals) Matches(ctx context.Context, pullCtx pull.Context, tag string)
 			}
 		}
 	}
+	return false, signalNotMatch, nil
+}
+
+func (s *Signals) doesCommentSubstringSingalMatch(ctx context.Context, pullCtx pull.Context, tag string, logger *zerolog.Logger) (bool, string, error) {
+	body := pullCtx.Body()
+	comments, err := pullCtx.Comments(ctx)
+	if err != nil {
+		return false, "unable to list pull request comments", err
+	}
 
 	if len(s.CommentSubstrings) == 0 {
-		logger.Debug().Msgf("No comment substrings found to match against")
+		logger.Debug().Msgf("Singal [comment_substrings] is not found. Skipping...")
+		return false, signalNotFound, nil
 	}
 	for _, signalSubstring := range s.CommentSubstrings {
 		if strings.Contains(body, signalSubstring) {
@@ -101,19 +215,28 @@ func (s *Signals) Matches(ctx context.Context, pullCtx pull.Context, tag string)
 			}
 		}
 	}
+	return false, signalNotMatch, nil
+}
 
+func (s *Signals) doesPRSubstringSingalMatch(ctx context.Context, pullCtx pull.Context, tag string, logger *zerolog.Logger) (bool, string, error) {
+	body := pullCtx.Body()
 	if len(s.PRBodySubstrings) == 0 {
-		logger.Debug().Msgf("No PR body substrings found to match against")
+		logger.Debug().Msgf("Singal [pr_body_substrings] is not found. Skipping...")
+		return false, signalNotFound, nil
 	}
 	for _, signalSubstring := range s.PRBodySubstrings {
 		if strings.Contains(body, signalSubstring) {
 			return true, fmt.Sprintf("pull request body matches a %s substring: %q", tag, signalSubstring), nil
 		}
 	}
+	return false, signalNotMatch, nil
+}
 
+func (s *Signals) doesTargetBranchSingalMatch(ctx context.Context, pullCtx pull.Context, tag string, logger *zerolog.Logger) (bool, string, error) {
 	targetBranch, _ := pullCtx.Branches()
-	if len(s.Branches) == 0 || len(s.BranchPatterns) == 0 {
-		logger.Debug().Msgf("No branches or branch patterns found to match against")
+	if len(s.Branches) == 0 && len(s.BranchPatterns) == 0 {
+		logger.Debug().Msgf("Singal [branches] or [branch_patterns] is not found. Skipping...")
+		return false, signalNotFound, nil
 	}
 	for _, signalBranch := range s.Branches {
 		if targetBranch == signalBranch {
@@ -125,6 +248,19 @@ func (s *Signals) Matches(ctx context.Context, pullCtx pull.Context, tag string)
 			return true, fmt.Sprintf("pull request target branch (%q) matches pattern: %q", targetBranch, signalBranch), nil
 		}
 	}
+	return false, signalNotMatch, nil
+}
 
-	return false, fmt.Sprintf("pull request does not match the %s", tag), nil
+func (s *Signals) doesCreatorSingalMatch(ctx context.Context, pullCtx pull.Context, tag string, logger *zerolog.Logger) (bool, string, error) {
+	creator := pullCtx.Creator()
+	if len(s.PRCreator) == 0 {
+		logger.Debug().Msgf("Singal [creators] is not found. Skipping...")
+		return false, signalNotFound, nil
+	}
+	for _, signalPRCreator := range s.PRCreator {
+		if creator == signalPRCreator {
+			return true, fmt.Sprintf("pull request matches a creator %s", creator), nil
+		}
+	}
+	return false, signalNotMatch, nil
 }
